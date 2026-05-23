@@ -1,0 +1,422 @@
+import streamlit as st
+import gspread
+from datetime import datetime
+import pandas as pd
+from streamlit_calendar import calendar
+import time
+
+# --- TEMA VE SAYFA AYARLARI ---
+st.set_page_config(page_title="Asmira Komuta Merkezi", layout="wide")
+
+st.markdown("""
+<style>
+      .stApp { background-color: #ffffff; }
+      [data-testid="stSidebar"] { background-color: #efebe9; border-right: 1px solid #d7ccc8; }
+      
+      /* 🌟 ANA SAYFA SADELEŞTİRİLMİŞ YENİ METRİK HATTI */
+      .minimal-stats {
+           display: flex;
+           justify-content: space-around;
+           padding: 25px 0;
+           border-bottom: 1px solid #eeeeee;
+           margin-bottom: 25px;
+           background-color: #ffffff;
+      }
+      .stat-item { text-align: center; flex: 1; }
+      .stat-value { font-size: 34px; font-weight: bold; color: #5d4037; display: block; line-height: 1; }
+      .stat-label { font-size: 11px; color: #8d6e63; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600; margin-top: 8px; }
+      .stat-divider { border-left: 1px solid #eeeeee; height: 45px; align-self: center; }
+
+      .section-header { font-size: 22px !important; font-weight: bold !important; color: #5d4037; }
+      
+      /* SOL MENÜ RADYO GÖSTERGESİNİ KALDIR: SADECE GÖLGE OLSUN */
+      [data-testid="stSidebar"] label[data-baseweb="radio"] {
+           display: block !important;
+           width: 100% !important;
+           min-width: 100% !important;
+           margin-bottom: 8px !important;
+           padding: 10px 14px !important;
+           background-color: transparent !important;
+           border: none !important;
+           box-shadow: none !important;
+           transition: box-shadow .18s ease, transform .18s ease !important;
+      }
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-bo,
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-bo > div,
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-ck,
+      [data-testid="stSidebar"] label[data-baseweb="radio"] input[type="radio"] {
+           display: none !important;
+           visibility: hidden !important;
+           width: 0 !important;
+           height: 0 !important;
+           margin: 0 !important;
+           padding: 0 !important;
+           border: none !important;
+      }
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-bz {
+           margin-left: 0 !important;
+           padding: 0 !important;
+           width: 100% !important;
+      }
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-bz p {
+           margin: 0 !important;
+           color: #333333 !important;
+           font-size: 16px !important;
+      }
+      [data-testid="stSidebar"] label[data-baseweb="radio"]:hover {
+           box-shadow: 0 10px 24px rgba(0,0,0,0.08) !important;
+           transform: translateY(-1px) !important;
+      }
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-bo {
+           width: 0 !important;
+           min-width: 0 !important;
+           margin-right: 0 !important;
+           padding: 0 !important;
+      }
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-ck {
+           display: none !important;
+      }
+      [data-testid="stSidebar"] label[data-baseweb="radio"] .st-bz {
+           margin-left: 0 !important;
+      }
+      
+      /* STANDART İNCE ÇİZGİ */
+      hr { margin: 5px 0 15px 0 !important; border-top: 1px solid #8d6e63 !important; opacity: 0.3; }
+           
+      /* 🎯 MOUSE VE OKUNAKLI DISABLED AYARI */
+      input:disabled, textarea:disabled {
+           color: #424242 !important; 
+           -webkit-text-fill-color: #424242 !important;
+           cursor: default !important;
+           background-color: #f8f9fa !important;
+           opacity: 1 !important;
+      }
+                
+      /* ANA BUTONLAR (KAHVERENGİ VE ORTALI) */
+      button[kind="primary"], .stFormSubmitButton > button {
+           background-color: #5d4037 !important;
+           color: white !important;
+           border-radius: 4px !important;
+           height: 45px !important;
+           width: 100% !important;
+           border: none !important;
+      }
+      button[kind="primary"]:hover, .stFormSubmitButton > button:hover {
+           background-color: #4e342e !important;
+      }
+       /* MÜŞTERİ LİSTESİ İSİMLERİ - RENKSİZ VE SOLA DAYALI */
+      button[kind="secondary"] {
+           background-color: transparent !important;
+           color: #333333 !important;
+           border: none !important;
+           border-bottom: 1px solid #eeeeee !important;
+           justify-content: flex-start !important;
+           padding-left: 5px !important;
+           box-shadow: none !important;
+           border-radius: 0px !important;
+           height: auto !important;
+           padding-top: 10px !important;
+           padding-bottom: 10px !important;
+      }
+      button[kind="secondary"] div {
+           justify-content: flex-start !important;
+      }
+      button[kind="secondary"] p {
+           font-size: 15px !important;
+           text-align: left !important;
+           margin: 0 !important;
+      }
+      button[kind="secondary"]:hover {
+           background-color: #f9f9f9 !important;
+           color: #d84315 !important;
+      }
+       /* KART DÜZENİ - TÜM ÇERÇEVELER KALDIRILDI */
+      .customer-card {
+            background: #ffffff;
+            padding: 10px 0px;
+            border: none !important;
+       }
+      .status-card { padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 5px solid #d7ccc8; background-color: #fff; font-size: 13px; font-weight: 500; }
+      .liste-kutusu { max-height: 550px; overflow-y: auto; padding-right: 15px; margin-top:10px; }
+      .info-label { font-weight: bold; color: #5d4037; margin-bottom: 2px; font-size: 14px; }
+      .info-value { background: #fff; padding: 10px; border-radius: 4px; border: 1px solid #e0e0e0; margin-bottom: 12px; min-height: 42px; font-size: 15px; color: #333; }
+</style>
+""", unsafe_allow_html=True)
+
+# --- GOOGLE SHEETS BAĞLANTI ---
+@st.cache_resource
+def baglanti_kur():
+      try:
+           client = gspread.oauth(credentials_filename='client_secret.json', authorized_user_filename='token.json')
+           return client.open("Asmira_Veritabani")
+      except Exception as e:
+           st.error(f"Bağlantı Hatası: {e}")
+           return None
+
+# --- VERİ İŞLEME FONKSİYONLARI ---
+@st.cache_data
+def veri_cek_taze(sayfa_adi):
+      sp = baglanti_kur()
+      if sp:
+           try: return sp.worksheet(sayfa_adi).get_all_records()
+           except: return []
+      return []
+
+def veri_yaz(sayfa_adi, satir):
+      sp = baglanti_kur()
+      if sp:
+           sp.worksheet(sayfa_adi).append_row(satir)
+           st.cache_data.clear()
+
+def veri_guncelle(sayfa_adi, eski_unvan, yeni_satir):
+      sp = baglanti_kur()
+      if sp:
+           try:
+                ws = sp.worksheet(sayfa_adi)
+                cell = ws.find(eski_unvan)
+                if cell:
+                     ws.update(range_name=f"A{cell.row}", values=[yeni_satir])
+                     st.cache_data.clear()
+                     return True
+           except: return False
+      return False
+
+def veri_sil(sayfa_adi, unvan_sil):
+      sp = baglanti_kur()
+      if sp:
+           try:
+                ws = sp.worksheet(sayfa_adi)
+                cell = ws.find(unvan_sil)
+                if cell:
+                     ws.delete_rows(cell.row)
+                     st.cache_data.clear()
+                     return True
+           except: return False
+      return False
+
+# --- VERİLERİ ÇEK ---
+ana_data = veri_cek_taze("ANA_SAYFA")
+is_data = veri_cek_taze("IS_YONETIMI")
+m_data = veri_cek_taze("MUSTERILER")
+t_data = veri_cek_taze("TEKLIF_YONETIMI")
+surec_data = veri_cek_taze("SUREC_TAKIP")
+
+# --- SOL MENÜ ---
+with st.sidebar:
+      try: st.image("logo.png", width=160)
+      except: st.title("ASMİRA")
+      st.markdown("<br>", unsafe_allow_html=True)
+      menu = st.radio("", ["Ana Sayfa", "İş Yönetimi", "Yeni Müşteri Ekle", "Teklif Yönetimi", "Müşteriler", "Ayarlar"])
+
+# --- 1. ANA SAYFA ---
+if menu == "Ana Sayfa":
+      toplam_m = len(m_data)
+      teklif_v = len(t_data)
+      acik_is = len(is_data)
+      
+      st.markdown(f"""
+      <div class="minimal-stats">
+           <div class="stat-item">
+                <span class="stat-value">{toplam_m}</span>
+                <span class="stat-label">TOPLAM MÜŞTERİ</span>
+           </div>
+           <div class="stat-divider"></div>
+           <div class="stat-item">
+                <span class="stat-value">{teklif_v}</span>
+                <span class="stat-label">TEKLİF VERİLENLER</span>
+           </div>
+           <div class="stat-divider"></div>
+           <div class="stat-item">
+                <span class="stat-value">{acik_is}</span>
+                <span class="stat-label">AÇIK İŞ SAYISI</span>
+           </div>
+      </div>
+      """, unsafe_allow_html=True)
+
+      col_left, col_right = st.columns([2, 1])
+      with col_left:
+           st.markdown('<span class="section-header">Takvim</span>', unsafe_allow_html=True)
+           st.markdown("<hr>", unsafe_allow_html=True)
+           cal_events = []
+           for r in ana_data:
+                try:
+                     if 'Gecerlilik' in r and r['Gecerlilik']:
+                          d = datetime.strptime(str(r['Gecerlilik']), "%d.%m.%Y").strftime("%Y-%m-%d")
+                          cal_events.append({"title": r.get('Firma','Bilinmiyor'), "start": d, "backgroundColor": "#ffffff", "textColor": "#5d4037", "borderColor": "#d7ccc8"})
+                except: continue
+           calendar(
+               events=cal_events,
+               options={
+                   "locale": "tr",
+                   "firstDay": 1,
+                   "buttonText": {"today": "Bugün", "month": "Ay", "week": "Hafta", "day": "Gün"},
+                   "headerToolbar": {"left": "today prev,next", "center": "title", "right": "dayGridMonth,dayGridWeek,dayGridDay"},
+                   "initialView": "dayGridMonth",
+               },
+               custom_css="""
+                   .fc .fc-button {
+                       background: #f2f2f2 !important;
+                       color: #333 !important;
+                       border: 1px solid #ccc !important;
+                       box-shadow: none !important;
+                   }
+                   .fc .fc-button:hover,
+                   .fc .fc-button:focus {
+                       background: #d9d9d9 !important;
+                       color: #111 !important;
+                   }
+                   .fc .fc-button:active {
+                       background: #b8b8b8 !important;
+                   }
+                   .fc .fc-button-primary {
+                       background: #e0e0e0 !important;
+                       color: #222 !important;
+                       border-color: #bbb !important;
+                   }
+                   .fc .fc-button-primary:hover {
+                       background: #c8c8c8 !important;
+                   }
+               """,
+           )
+      with col_right:
+           st.markdown('<span class="section-header">Süresi Yaklaşanlar</span>', unsafe_allow_html=True)
+           st.markdown("<hr>", unsafe_allow_html=True)
+           if ana_data:
+                df_ana = pd.DataFrame(ana_data)
+                if 'Kalan Gun' in df_ana.columns:
+                     df_ana['Kalan_Gun'] = pd.to_numeric(df_ana['Kalan Gun'], errors='coerce').fillna(0).astype(int)
+                     for _, r in df_ana.sort_values('Kalan_Gun').iterrows():
+                          st.markdown(f'<div class="status-card"><b>{r.get("Firma","-")}</b><br><small>{r.get("Hizmet","-")} | {r["Kalan_Gun"]} GÜN KALDI</small></div>', unsafe_allow_html=True)
+           else: st.info("Henüz arşivlenmiş belge yok.")
+
+# --- 2. İŞ YÖNETİMİ ---
+elif menu == "İş Yönetimi":
+      st.markdown('<span class="section-header">İş Yönetimi ve Operasyon</span>', unsafe_allow_html=True)
+      st.markdown("<hr>", unsafe_allow_html=True)
+      cols_is = ["Firma Unvanı", "Hizmet Türü", "Sorumlu Personel", "Süreç Notları / Aşamalar", "İş Başlangıç Tarihi"]
+      df_is = pd.DataFrame(is_data) if is_data else pd.DataFrame(columns=cols_is)
+      ed_is = st.data_editor(df_is, num_rows="dynamic", use_container_width=True, key="ed_is")
+      if st.button("İŞ YÖNETİM TABLOSUNU KAYDET", type="primary"):
+           sp = baglanti_kur()
+           if sp:
+                ws = sp.worksheet("IS_YONETIMI"); ws.clear(); ws.append_row(cols_is)
+                if not ed_is.empty: ws.append_rows(ed_is.values.tolist())
+                st.cache_data.clear(); st.success("Operasyon listesi güncellendi."); time.sleep(1.5); st.rerun()
+
+# --- 3. YENİ MÜŞTERİ EKLE ---
+elif menu == "Yeni Müşteri Ekle":
+      st.markdown('<span class="section-header">Yeni Müşteri Kayıt Formu</span>', unsafe_allow_html=True)
+      st.markdown("<hr>", unsafe_allow_html=True)
+      with st.form("y_form", border=False):
+           c1, c2 = st.columns(2)
+           unvan = c1.text_input("Unvan")
+           v_no = c1.text_input("Vergi No")
+           ks = c1.text_input("Kuruluş Sahibi")
+           web = c1.text_input("Web Sitesi")
+           adr = c2.text_area("Adres")
+           mail = c2.text_input("E-Mail")
+           ilg = c2.text_input("İlgili Kişi")
+           tel = c2.text_input("İlgili Kişi Telefon")
+           if st.form_submit_button("SİSTEME KAYDET"):
+                u_f = unvan.replace('i', 'İ').replace('ı', 'I').upper()
+                ks_f = ks.replace('i', 'İ').replace('ı', 'I').upper()
+                adr_f = adr.replace('i', 'İ').replace('ı', 'I').upper()
+                ilg_f = ilg.replace('i', 'İ').replace('ı', 'I').upper()
+                veri_yaz("MUSTERILER", [u_f, v_no, ks_f, web.lower(), adr_f, mail.lower(), ilg_f, tel, datetime.now().strftime("%d.%m.%Y")])
+                st.success(f"{u_f} başarıyla eklendi!"); time.sleep(1.5); st.rerun()
+
+# --- 4. TEKLİF YÖNETİMİ ---
+elif menu == "Teklif Yönetimi":
+      st.markdown('<span class="section-header">Teklif Yönetimi</span>', unsafe_allow_html=True)
+      st.markdown("<hr>", unsafe_allow_html=True)
+      cols_t = ["Unvan", "Vergi No", "Kuruluş Sahibi", "Web Sitesi", "E-Mail", "İlgili Kişi", "Telefon", "Adres", "Hizmet Bedeli"]
+      df_t = pd.DataFrame(t_data) if t_data else pd.DataFrame(columns=cols_t)
+      ed_t = st.data_editor(df_t, num_rows="dynamic", use_container_width=True, key="ed_t")
+      if st.button("TEKLİFLERİ KAYDET", type="primary"):
+           sp = baglanti_kur()
+           if sp:
+                ws = sp.worksheet("TEKLIF_YONETIMI"); ws.clear(); ws.append_row(cols_t)
+                if not ed_t.empty: ws.append_rows(ed_t.values.tolist())
+                st.cache_data.clear(); st.success("Teklifler güncellendi."); time.sleep(1.5); st.rerun()
+
+# --- 5. MÜŞTERİLER ---
+elif menu == "Müşteriler":
+      st.markdown('<span class="section-header">Müşteri Bilgi ve Yönetim Merkezi</span>', unsafe_allow_html=True)
+      st.markdown("<hr>", unsafe_allow_html=True)
+      if m_data:
+           df_m = pd.DataFrame(m_data)
+           if 'aktif_firma' not in st.session_state: st.session_state.aktif_firma = "Seçiniz..."
+           if 'duzenleme_modu' not in st.session_state: st.session_state.duzenleme_modu = False
+           if 'silme_onayi' not in st.session_state: st.session_state.silme_onayi = False
+           
+           if st.session_state.aktif_firma == "Seçiniz...":
+                arama = st.text_input("Firma Ara...", key="arama_kutusu")
+                term = arama.replace('i', 'İ').replace('ı', 'I').upper()
+                df_goster = df_m[df_m['Unvan'].str.contains(term, na=False)] if arama else df_m
+                st.markdown('<div class="liste-kutusu">', unsafe_allow_html=True)
+                for unvan in df_goster['Unvan']:
+                     if st.button(unvan, use_container_width=True, type="secondary", key=f"btn_{unvan}"):
+                          st.session_state.aktif_firma = unvan; st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+           else:
+                if st.button("MÜŞTERİ LİSTESİNE GERİ DÖN", type="primary"):
+                     st.session_state.aktif_firma = "Seçiniz..."; st.session_state.duzenleme_modu = False; st.session_state.silme_onayi = False; st.rerun()
+                                                             
+                detay = df_m[df_m['Unvan'] == st.session_state.aktif_firma].iloc[0]
+                st.subheader(f"{st.session_state.aktif_firma}")
+                st.markdown("<hr>", unsafe_allow_html=True)
+                                     
+                t1, t2, t3 = st.tabs(["Müşteri Bilgi Kartı", "Arşiv Verileri", "Süreç Takip Notları"])
+                with t1:
+                     with st.form("yerinde_edit_form", border=False):
+                          c1, c2 = st.columns(2)
+                          up_u = c1.text_input("Unvan", value=str(detay.get('Unvan','')), disabled=not st.session_state.duzenleme_modu)
+                          up_v = c1.text_input("Vergi No", value=str(detay.get('Vergi No','')), disabled=not st.session_state.duzenleme_modu)
+                          up_k = c1.text_input("Kuruluş Sahibi", value=str(detay.get('Kuruluş Sahibi','')), disabled=not st.session_state.duzenleme_modu)
+                          up_w = c1.text_input("Web Sitesi", value=str(detay.get('Web Sitesi','')), disabled=not st.session_state.duzenleme_modu)
+                          up_a = c2.text_area("Adres", value=str(detay.get('Adres','')), disabled=not st.session_state.duzenleme_modu)
+                          up_m = c2.text_input("E-Mail", value=str(detay.get('E-Mail','')), disabled=not st.session_state.duzenleme_modu)
+                          up_i = c2.text_input("İlgili Kişi", value=str(detay.get('İlgili Kişi','')), disabled=not st.session_state.duzenleme_modu)
+                          up_t = c2.text_input("İlgili Kişi Telefon", value=str(detay.get('İlgili Kişi Telefon','')), disabled=not st.session_state.duzenleme_modu)
+                          st.markdown("<hr>", unsafe_allow_html=True)
+                          col_b_sol, col_b_orta, col_b_bos, col_b_sag = st.columns([1.2, 1.5, 1, 1.2])
+                          if not st.session_state.duzenleme_modu:
+                               if col_b_sol.form_submit_button("BİLGİLERİ DÜZENLE"): st.session_state.duzenleme_modu = True; st.rerun()
+                          else:
+                               if col_b_orta.form_submit_button("DEĞİŞİKLİKLERİ KAYDET"):
+                                    y_satir = [up_u.replace('i', 'İ').upper(), up_v, up_k.replace('i', 'İ').upper(), up_w.lower(), up_a.replace('i', 'İ').upper(), up_m.lower(), up_i.replace('i', 'İ').upper(), up_t, detay.get('Kayıt Tarihi')]
+                                    if veri_guncelle("MUSTERILER", st.session_state.aktif_firma, y_satir):
+                                         st.session_state.aktif_firma = up_u.replace('i', 'İ').upper(); st.session_state.duzenleme_modu = False; st.rerun()
+                          if col_b_sag.form_submit_button("MÜŞTERİ KAYDINI SİL"): st.session_state.silme_onayi = True; st.rerun()
+                     if st.session_state.silme_onayi:
+                          st.error("DİKKAT: Bu müşteri kaydı tamamen silinecektir. Onaylıyor musunuz?")
+                          c_onay1, c_onay2 = st.columns([1, 4])
+                          if c_onay1.button("EVET, SİL"):
+                               if veri_sil("MUSTERILER", st.session_state.aktif_firma): st.session_state.aktif_firma = "Seçiniz..."; st.session_state.silme_onayi = False; st.rerun()
+                          if c_onay2.button("HAYIR, VAZGEÇ"): st.session_state.silme_onayi = False; st.rerun()
+
+                with t2:
+                     f_arsiv = [a for a in ana_data if a.get('Firma') == st.session_state.aktif_firma]
+                     if f_arsiv: st.table(pd.DataFrame(f_arsiv)[["Hizmet", "Gecerlilik", "Notlar", "Bedel"]])
+                     else: st.info("Arşiv verisi bulunamadı.")
+                with t3:
+                     f_notlar = [n for n in surec_data if n.get('Firma Unvanı') == st.session_state.aktif_firma]
+                     for n in f_notlar:
+                          st.caption(f"Tarih: {n.get('Tarih','-')} | Yazan: {n.get('Kaydeden','-')}")
+                          st.info(n.get('Not','-'))
+                     with st.expander("Yeni Süreç Notu Ekle"):
+                          n_metin = st.text_area("Notunuzu yazın:")
+                          if st.button("NOTU KAYDET", type="primary"):
+                               veri_yaz("SUREC_TAKIP", [st.session_state.aktif_firma, datetime.now().strftime("%d.%m.%Y %H:%M"), n_metin, "Kürşad Bey"])
+                               st.success("Kaydedildi!"); time.sleep(1); st.rerun()
+                st.markdown('</div>', unsafe_allow_html=True)
+
+# --- 6. AYARLAR ---
+elif menu == "Ayarlar":
+      st.markdown('<span class="section-header">Ayarlar</span>', unsafe_allow_html=True)
+      st.markdown("<hr>", unsafe_allow_html=True)
+      st.info("Bu bölüm yönetici yetkileri içindir.")
+streamlit
+gspread
+pandas
+streamlit-calendar
